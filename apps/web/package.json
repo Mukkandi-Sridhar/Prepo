@@ -1,0 +1,29 @@
+{
+  "name": "@prepo/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prepo/db": "workspace:*",
+    "@prepo/engine": "workspace:*",
+    "@prepo/llm": "workspace:*",
+    "@prepo/shared": "workspace:*",
+    "@prepo/worker": "workspace:*",
+    "jose": "^5.9.6",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.1",
+    "typescript": "^5.6.3"
+  }
+}

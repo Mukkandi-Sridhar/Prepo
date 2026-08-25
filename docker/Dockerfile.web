@@ -1,0 +1,44 @@
+FROM node:22-slim AS base
+ENV PNPM_HOME="/pnpm" PATH="/pnpm:$PATH"
+RUN corepack enable
+WORKDIR /app
+
+# ── dependencies ─────────────────────────────────────────────
+FROM base AS deps
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
+COPY apps/web/package.json                 apps/web/
+COPY apps/worker/package.json              apps/worker/
+COPY packages/shared/package.json          packages/shared/
+COPY packages/db/package.json              packages/db/
+COPY packages/llm/package.json             packages/llm/
+COPY packages/prompts/package.json         packages/prompts/
+COPY packages/engine/package.json          packages/engine/
+RUN pnpm install --frozen-lockfile || pnpm install
+
+# ── build ────────────────────────────────────────────────────
+FROM base AS build
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps ./apps
+COPY --from=deps /app/packages ./packages
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm --filter @prepo/web run build
+
+# ── runtime ──────────────────────────────────────────────────
+FROM base AS runtime
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+
+# git is needed to clone repositories; nothing in a cloned repo is ever executed.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app ./
+RUN chown -R node:node /app
+USER node
+
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s \
+  CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["pnpm", "--filter", "@prepo/web", "run", "start"]

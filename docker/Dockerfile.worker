@@ -1,0 +1,33 @@
+FROM node:22-slim AS base
+ENV PNPM_HOME="/pnpm" PATH="/pnpm:$PATH"
+RUN corepack enable
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
+COPY apps/web/package.json                 apps/web/
+COPY apps/worker/package.json              apps/worker/
+COPY packages/shared/package.json          packages/shared/
+COPY packages/db/package.json              packages/db/
+COPY packages/llm/package.json             packages/llm/
+COPY packages/prompts/package.json         packages/prompts/
+COPY packages/engine/package.json          packages/engine/
+RUN pnpm install --frozen-lockfile || pnpm install
+
+FROM base AS runtime
+ENV NODE_ENV=production
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# The worker only ever parses repositories — it never installs, builds, or
+# executes anything it clones. Combined with a read-only root filesystem and a
+# size-capped tmpfs (see docker-compose.yml), that removes the entire remote
+# code execution class of risk.
+USER node
+
+CMD ["pnpm", "--filter", "@prepo/worker", "run", "start"]

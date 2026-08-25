@@ -1,0 +1,33 @@
+{
+  "_comment": [
+    "Cost estimation rates in US cents per 1,000,000 tokens.",
+    "",
+    "Provider pricing moves. `fetchedAt` is shown next to every estimate in the",
+    "UI so an estimate is always honest about how stale it might be. Only rates",
+    "we can cite are filled in; the rest are null and the UI says 'estimate",
+    "unavailable' rather than inventing a number.",
+    "",
+    "To add your own rates, fill in the nulls and bump fetchedAt."
+  ],
+  "fetchedAt": "2026-06-24",
+  "sources": {
+    "anthropic": "https://www.anthropic.com/pricing"
+  },
+  "rates": {
+    "claude-opus-5": { "input": 500, "output": 2500, "cacheRead": 50, "cacheWrite": 625 },
+    "claude-sonnet-5": { "input": 300, "output": 1500, "cacheRead": 30, "cacheWrite": 375 },
+    "claude-haiku-4-5": { "input": 100, "output": 500, "cacheRead": 10, "cacheWrite": 125 },
+
+    "gpt-4o": null,
+    "gpt-4o-mini": null,
+    "gemini-2.0-flash": null,
+    "gemini-2.5-pro": null,
+
+    "llama3.2:3b": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+    "qwen2.5-coder:14b": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+    "qwen2.5-coder:32b": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+
+    "text-embedding-3-small": { "input": 2, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+    "nomic-embed-text": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+  }
+}

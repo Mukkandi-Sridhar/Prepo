@@ -1,0 +1,54 @@
+{
+  "_comment": [
+    "Tier -> model mapping. Editing this file is the entire process for adopting",
+    "a newly released model. Capability flags matter: current Claude models reject",
+    "`temperature` and `output_config.effort` differs by tier, so the provider",
+    "adapters read these flags instead of guessing."
+  ],
+  "anthropic": {
+    "fast": {
+      "id": "claude-haiku-4-5",
+      "sampling": true,
+      "thinking": "none",
+      "effort": false,
+      "caching": true,
+      "contextTokens": 200000
+    },
+    "balanced": {
+      "id": "claude-sonnet-5",
+      "sampling": false,
+      "thinking": "adaptive",
+      "effort": true,
+      "caching": true,
+      "contextTokens": 1000000
+    },
+    "frontier": {
+      "id": "claude-opus-5",
+      "sampling": false,
+      "thinking": "adaptive",
+      "effort": true,
+      "caching": true,
+      "contextTokens": 1000000
+    }
+  },
+  "openai": {
+    "fast": { "id": "gpt-4o-mini", "sampling": true, "thinking": "none", "effort": false, "caching": true, "contextTokens": 128000 },
+    "balanced": { "id": "gpt-4o", "sampling": true, "thinking": "none", "effort": false, "caching": true, "contextTokens": 128000 },
+    "frontier": { "id": "gpt-4o", "sampling": true, "thinking": "none", "effort": false, "caching": true, "contextTokens": 128000 }
+  },
+  "google": {
+    "fast": { "id": "gemini-2.0-flash", "sampling": true, "thinking": "none", "effort": false, "caching": false, "contextTokens": 1000000 },
+    "balanced": { "id": "gemini-2.0-flash", "sampling": true, "thinking": "none", "effort": false, "caching": false, "contextTokens": 1000000 },
+    "frontier": { "id": "gemini-2.5-pro", "sampling": true, "thinking": "none", "effort": false, "caching": false, "contextTokens": 1000000 }
+  },
+  "openrouter": {
+    "fast": { "id": "anthropic/claude-haiku-4.5", "sampling": true, "thinking": "none", "effort": false, "caching": false, "contextTokens": 200000 },
+    "balanced": { "id": "anthropic/claude-sonnet-5", "sampling": false, "thinking": "none", "effort": false, "caching": false, "contextTokens": 1000000 },
+    "frontier": { "id": "anthropic/claude-opus-5", "sampling": false, "thinking": "none", "effort": false, "caching": false, "contextTokens": 1000000 }
+  },
+  "ollama": {
+    "fast": { "id": "llama3.2:3b", "sampling": true, "thinking": "none", "effort": false, "caching": false, "contextTokens": 128000 },
+    "balanced": { "id": "qwen2.5-coder:14b", "sampling": true, "thinking": "none", "effort": false, "caching": false, "contextTokens": 32000 },
+    "frontier": { "id": "qwen2.5-coder:32b", "sampling": true, "thinking": "none", "effort": false, "caching": false, "contextTokens": 32000 }
+  }
+}

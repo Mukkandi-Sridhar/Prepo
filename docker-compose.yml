@@ -1,0 +1,80 @@
+name: prepo
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: prepo
+      POSTGRES_USER: postgres
+      POSTGRES_DB: prepo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d prepo"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      # Exposed so you can inspect the database from your machine.
+      # Drop this line for a deployment that does not need it.
+      - "5432:5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:prepo@db:5432/prepo
+      APP_URL: ${APP_URL:-http://localhost:3000}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    volumes:
+      - storage:/app/storage
+    command: sh -c "pnpm db:migrate && pnpm --filter @prepo/web run start"
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:prepo@db:5432/prepo
+      WORK_DIR: /work
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+    # ── sandbox ──────────────────────────────────────────────
+    # The worker handles arbitrary code from the internet. It parses, never
+    # executes — and these constraints make that guarantee structural rather
+    # than a promise in a README.
+    read_only: true
+    tmpfs:
+      - /work:size=2g,mode=1777
+      - /tmp:size=256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    volumes:
+      - storage:/app/storage
+
+    # The only knob most people ever turn. Workers scale on queue depth,
+    # independently of web traffic — one large monorepo generates far more
+    # work than a hundred people reading their packs.
+    deploy:
+      replicas: 1
+
+volumes:
+  pgdata:
+  storage:

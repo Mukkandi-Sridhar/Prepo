@@ -1,0 +1,34 @@
+{
+  "name": "prepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Point it at the repo on your resume. It reads the code and cross-examines you.",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.12.3",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "start": "turbo run start --parallel",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "pnpm --filter @prepo/db run migrate",
+    "db:studio": "pnpm --filter @prepo/db run studio",
+    "worker": "pnpm --filter @prepo/worker run start",
+    "eval": "tsx evals/run.ts",
+    "keygen": "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "turbo": "^2.3.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": []
+  }
+}

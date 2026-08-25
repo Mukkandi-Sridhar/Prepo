@@ -1,0 +1,20 @@
+{
+  "name": "@prepo/llm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "@prepo/shared": "workspace:*",
+    "openai": "^4.73.0",
+    "zod": "^3.23.8"
+  }
+}

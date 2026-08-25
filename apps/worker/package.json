@@ -1,0 +1,24 @@
+{
+  "name": "@prepo/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./queue": "./src/queue.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prepo/db": "workspace:*",
+    "@prepo/engine": "workspace:*",
+    "@prepo/llm": "workspace:*",
+    "@prepo/shared": "workspace:*",
+    "pg-boss": "^10.1.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}
