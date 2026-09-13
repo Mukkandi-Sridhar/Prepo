@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Open a [private security advisory](https://github.com/YOU/prepo/security/advisories/new) on GitHub, or email the address in the repository profile. Please don't open a public issue for anything exploitable.
+Open a [private security advisory](https://github.com/Mukkandi-Sridhar/Prepo/security/advisories/new) on GitHub, or email the address in the repository profile. Please don't open a public issue for anything exploitable.
 
 Expect an acknowledgement within a week. This is a volunteer-maintained project — there is no bounty, but you will be credited in the advisory unless you'd rather not be.
 

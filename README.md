@@ -2,12 +2,18 @@
 
 **Your repo, cross-examined.**
 
+[![License: Apache 2.0](https://img.shields.io/github/license/Mukkandi-Sridhar/Prepo)](LICENSE)
+[![CI](https://github.com/Mukkandi-Sridhar/Prepo/actions/workflows/ci.yml/badge.svg)](https://github.com/Mukkandi-Sridhar/Prepo/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/Mukkandi-Sridhar/Prepo?style=flat)](https://github.com/Mukkandi-Sridhar/Prepo/stargazers)
+[![Issues](https://img.shields.io/github/issues/Mukkandi-Sridhar/Prepo)](https://github.com/Mukkandi-Sridhar/Prepo/issues)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 Point it at the repository on your resume. Prepo reads the code, builds a dossier, and generates the interview questions you'll actually be asked — with a model answer for each one, the follow-ups an interviewer would push into, and **citations back to the exact lines in your code**.
 
 Then it interviews you.
 
 ```bash
-git clone https://github.com/YOU/prepo && cd prepo
+git clone https://github.com/Mukkandi-Sridhar/Prepo && cd Prepo
 cp .env.example .env && pnpm keygen   # paste the two keys into .env
 docker compose up -d
 ```
