@@ -1,6 +1,14 @@
 FROM node:22-slim AS base
 ENV PNPM_HOME="/pnpm" PATH="/pnpm:$PATH"
-RUN corepack enable
+# The worker runs read_only at runtime (see docker-compose.yml), so corepack
+# must never need to write anything once the container is up. Preparing the
+# exact pinned version now, while the filesystem is still writable, bakes a
+# ready-to-exec shim into the image — no download, no cache write, at
+# runtime. Without this, corepack's first invocation as the unprivileged
+# `node` user tries to create $HOME/.cache/node/corepack and crash-loops.
+ENV COREPACK_HOME="/pnpm-cache"
+RUN corepack enable && corepack prepare pnpm@9.12.3 --activate \
+ && chmod -R a+rX "$COREPACK_HOME"
 WORKDIR /app
 
 FROM base AS deps
