@@ -1,124 +1,293 @@
+/**
+ * Prepo eval runner.
+ *
+ * `pnpm eval` — the default, and what CI runs on every PR touching
+ * `packages/prompts` or `packages/engine`. Exercises stages 02–03 (filter,
+ * redact, extract facts) against the local fixtures in `evals/fixtures/local`.
+ * No network, no API key, no Postgres. It cannot tell you whether the model
+ * output is good — only that the deterministic half of the pipeline still
+ * works. That is a real, useful, always-available signal, and it is honest
+ * about being a smaller one than "quality evaluation suite" implies.
+ *
+ * `pnpm eval:full` — opt-in, costs real tokens. Requires DATABASE_URL and a
+ * configured model provider. Runs the actual pipeline (`runPipeline`) against
+ * the remote fixtures in `evals/fixtures.ts` and scores the real output with
+ * the functions in `scorers.ts` — the ones that were previously fed
+ * hand-written numbers instead of anything the pipeline produced.
+ *
+ * Neither mode fabricates a result. A gate that cannot run is reported as
+ * skipped, with the reason, not as a passing number.
+ */
 import fs from "node:fs";
 import path from "node:path";
-import { GOLDEN_REPOS } from "./fixtures.js";
+import { collect, extractFacts } from "@prepo/engine";
+import { LOCAL_FIXTURES, REMOTE_FIXTURES } from "./fixtures.js";
 import {
   scoreCategoryCoverage,
   scoreCitationValidity,
-  scoreCostRegression,
   scoreDuplicateRate,
   scoreGroundedness,
-  scoreTimeToFirstQuestion,
   type EvaluatedQuestion,
   type MetricResult,
 } from "./scorers.js";
 
-async function main() {
-  console.log("=================================================");
-  console.log("       PREPO QUALITY EVALUATION SUITE            ");
-  console.log("=================================================");
-  console.log(`Evaluating ${GOLDEN_REPOS.length} golden repository fixtures...\n`);
+const FULL = process.argv.includes("--full");
 
-  // Mock synthetic questions for evaluation run across golden fixtures
-  const sampleCategories = [
-    "project-walkthrough",
-    "architecture",
-    "language-internals",
-    "data-modeling",
-    "api-design",
-    "concurrency-performance",
-    "security",
-    "testing",
-    "devops-deployment",
-    "debugging-incidents",
-    "scaling-extensions",
-  ];
+interface SmokeResult {
+  id: string;
+  ok: boolean;
+  files: number;
+  languages: string[];
+  redactionFindings: number;
+  problems: string[];
+}
 
-  const simulatedQuestions: EvaluatedQuestion[] = sampleCategories.flatMap((cat, idx) => [
-    {
-      category: cat,
-      stem: `How does the ${cat} subsystem perform error handling under high load?`,
-      groundedness: 0.92,
-      citations: [
-        { path: `src/${cat}/handler.ts`, startLine: 10, endLine: 45, symbol: "handleError" },
-      ],
-    },
-    {
-      category: cat,
-      stem: `What are the latency trade-offs in the ${cat} implementation choices?`,
-      groundedness: 0.89,
-      citations: [
-        { path: `src/${cat}/service.ts`, startLine: 50, endLine: 120, symbol: "processPipeline" },
-      ],
-    },
-  ]);
+async function runSmokeSuite(): Promise<SmokeResult[]> {
+  const results: SmokeResult[] = [];
 
-  const fileLinesMap = new Map<string, number>();
-  for (const cat of sampleCategories) {
-    fileLinesMap.set(`src/${cat}/handler.ts`, 200);
-    fileLinesMap.set(`src/${cat}/service.ts`, 300);
+  for (const fixture of LOCAL_FIXTURES) {
+    const problems: string[] = [];
+
+    if (!fs.existsSync(fixture.dir)) {
+      results.push({ id: fixture.id, ok: false, files: 0, languages: [], redactionFindings: 0, problems: [`fixture directory missing: ${fixture.dir}`] });
+      continue;
+    }
+
+    const collected = await collect(fixture.dir);
+    const facts = extractFacts({
+      name: fixture.id,
+      commitSha: "local",
+      defaultBranch: null,
+      git: { commits: 0, contributors: 0, firstCommit: null, lastCommit: null, hotspots: [] },
+      collected,
+    });
+
+    if (collected.files.length < fixture.expect.minFiles) {
+      problems.push(`expected >= ${fixture.expect.minFiles} files, found ${collected.files.length}`);
+    }
+
+    const foundLangs = new Set(facts.languages.map((l) => l.lang));
+    for (const lang of fixture.expect.languages) {
+      if (!foundLangs.has(lang)) problems.push(`expected language "${lang}" not detected`);
+    }
+
+    if (fixture.expect.expectRedaction && collected.redaction.findings.length === 0) {
+      problems.push("expected a planted secret to be redacted, but stage 02 found nothing");
+    }
+
+    results.push({
+      id: fixture.id,
+      ok: problems.length === 0,
+      files: collected.files.length,
+      languages: [...foundLangs],
+      redactionFindings: collected.redaction.findings.length,
+      problems,
+    });
   }
 
-  // Calculate metrics
-  const metrics: MetricResult[] = [
-    scoreCitationValidity(simulatedQuestions, fileLinesMap),
-    scoreGroundedness(simulatedQuestions),
-    scoreCategoryCoverage(simulatedQuestions),
-    scoreDuplicateRate(simulatedQuestions),
-    scoreCostRegression(140, 150), // actual $1.40 vs baseline $1.50
-    scoreTimeToFirstQuestion(18_500), // 18.5s p95 latency
-  ];
+  return results;
+}
 
-  let overallPassed = true;
-  console.log("-------------------------------------------------");
-  console.log("METRIC RESULTS & QUALITY GATES:");
-  console.log("-------------------------------------------------");
+async function runFullSuite(): Promise<{ metrics: MetricResult[]; skippedReason?: string; perRepo: string[] }> {
+  if (!process.env.DATABASE_URL) {
+    return { metrics: [], skippedReason: "DATABASE_URL is not set — pnpm eval:full needs a running Postgres.", perRepo: [] };
+  }
 
-  for (const m of metrics) {
-    const statusSymbol = m.passed ? "✅ [PASS]" : "❌ [FAIL]";
-    if (!m.passed) overallPassed = false;
+  const { providersAvailableFromEnv } = await import("@prepo/llm");
+  if (providersAvailableFromEnv().length === 0) {
+    return {
+      metrics: [],
+      skippedReason: "No model provider configured — set ANTHROPIC_API_KEY (or another provider) to run the full suite.",
+      perRepo: [],
+    };
+  }
 
-    console.log(`${statusSymbol} ${m.metric.padEnd(28)}: ${m.score} ${m.unit ?? ""} (Gate: ${m.passed ? ">=" : "<"} ${m.threshold})`);
-    if (m.details) {
-      console.log(`   └─ ${m.details}`);
+  const { getDb, projects, jobs, users, eq } = await import("@prepo/db");
+  const { CostMeter, createEmbedder, createLlmClient } = await import("@prepo/llm");
+  const { resolveCredentials, runPipeline } = await import("@prepo/engine");
+
+  const db = getDb();
+  const perRepo: string[] = [];
+  const allQuestions: EvaluatedQuestion[] = [];
+  const fileLinesMap = new Map<string, number>();
+
+  const [runner] = await db
+    .insert(users)
+    .values({ email: "eval-runner@prepo.localhost", name: "eval runner" })
+    .onConflictDoUpdate({ target: users.email, set: {} })
+    .returning({ id: users.id });
+
+  for (const fixture of REMOTE_FIXTURES) {
+    const [project] = await db
+      .insert(projects)
+      .values({ ownerId: runner!.id, name: fixture.name, sourceType: "git", sourceUrl: fixture.url })
+      .returning({ id: projects.id });
+
+    const [job] = await db
+      .insert(jobs)
+      .values({ projectId: project!.id, userId: runner!.id, kind: "analyze", state: "running", budgetCents: 300 })
+      .returning({ id: jobs.id });
+
+    const meter = new CostMeter(300);
+    const credentials = await resolveCredentials(db, runner!.id);
+    const llm = createLlmClient(credentials, meter, createEmbedder());
+
+    try {
+      const result = await runPipeline(
+        {
+          db,
+          llm,
+          userId: runner!.id,
+          jobId: job!.id,
+          async onProgress(stage, fraction) {
+            process.stdout.write(`\r  ${fixture.id}: ${stage} ${(fraction * 100).toFixed(0)}%   `);
+          },
+        },
+        { projectId: project!.id, jobId: job!.id, sourceType: "git", sourceUrl: fixture.url },
+      );
+      process.stdout.write("\n");
+
+      perRepo.push(
+        `${fixture.id}: ${result.questionCount} kept, ${result.droppedCount} dropped, $${(result.costCents / 100).toFixed(2)}`,
+      );
+
+      const rows = await db.query.questions.findMany({
+        where: (t, { eq: equals }) => equals(t.setId, result.questionSetId),
+        with: { citations: true },
+      });
+
+      for (const row of rows) {
+        allQuestions.push({
+          category: row.category,
+          stem: row.stem,
+          groundedness: Number(row.groundedness),
+          citations: row.citations.map((c) => ({ path: c.path, startLine: c.startLine, endLine: c.endLine, symbol: c.symbol })),
+        });
+        for (const c of row.citations) {
+          fileLinesMap.set(c.path, Math.max(fileLinesMap.get(c.path) ?? 0, c.endLine));
+        }
+      }
+    } catch (err) {
+      perRepo.push(`${fixture.id}: FAILED — ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      await db.update(jobs).set({ state: "done" }).where(eq(jobs.id, job!.id));
     }
   }
 
-  console.log("-------------------------------------------------");
-  console.log(`OVERALL STATUS: ${overallPassed ? "PASSED ✅" : "FAILED ❌"}`);
-  console.log("-------------------------------------------------\n");
+  if (allQuestions.length === 0) {
+    return { metrics: [], skippedReason: "Every fixture run failed — see perRepo detail.", perRepo };
+  }
 
-  // Write Markdown Report
-  const reportLines = [
-    "# Prepo Evaluation Suite Report",
-    "",
-    `**Executed At**: ${new Date().toISOString()}`,
-    `**Fixtures Evaluated**: ${GOLDEN_REPOS.length}`,
-    `**Overall Result**: ${overallPassed ? "PASSED ✅" : "FAILED ❌"}`,
-    "",
-    "## Quality Gate Summary",
-    "",
-    "| Metric | Result | Threshold | Status | Details |",
-    "| :--- | :--- | :--- | :--- | :--- |",
-    ...metrics.map(
-      (m) =>
-        `| **${m.metric}** | ${m.score} ${m.unit ?? ""} | ${m.threshold} ${m.unit ?? ""} | ${m.passed ? "✅ PASS" : "❌ FAIL"} | ${m.details ?? ""} |`,
-    ),
-    "",
-    "## Golden Fixtures Included",
-    "",
-    "| ID | Repository | Stack | Description |",
-    "| :--- | :--- | :--- | :--- |",
-    ...GOLDEN_REPOS.map((r) => `| \`${r.id}\` | [${r.name}](${r.url}) | ${r.stackType} | ${r.description} |`),
-    "",
+  const metrics: MetricResult[] = [
+    scoreCitationValidity(allQuestions, fileLinesMap),
+    scoreGroundedness(allQuestions),
+    scoreCategoryCoverage(allQuestions),
+    scoreDuplicateRate(allQuestions),
   ];
 
-  const reportPath = path.join(process.cwd(), "evals", "report.md");
-  fs.writeFileSync(reportPath, reportLines.join("\n"), "utf-8");
-  console.log(`Evaluation report written to ${reportPath}`);
+  return { metrics, perRepo };
+}
 
-  if (!overallPassed) {
-    process.exit(1);
+async function main() {
+  console.log("=================================================");
+  console.log("  PREPO EVAL SUITE");
+  console.log("=================================================\n");
+
+  console.log(`Smoke suite (stages 02–03, no network, no API key) — ${LOCAL_FIXTURES.length} local fixtures\n`);
+  const smoke = await runSmokeSuite();
+
+  let smokeOk = true;
+  for (const r of smoke) {
+    const symbol = r.ok ? "✅ PASS" : "❌ FAIL";
+    if (!r.ok) smokeOk = false;
+    console.log(`${symbol}  ${r.id}  — ${r.files} files, languages: ${r.languages.join(", ") || "none"}, ${r.redactionFindings} secret(s) redacted`);
+    for (const p of r.problems) console.log(`   └─ ${p}`);
   }
+
+  let full: Awaited<ReturnType<typeof runFullSuite>> | null = null;
+  if (FULL) {
+    console.log("\n-------------------------------------------------");
+    console.log(`Full suite (real pipeline, real tokens) — ${REMOTE_FIXTURES.length} remote fixtures\n`);
+    full = await runFullSuite();
+
+    if (full.skippedReason) {
+      console.log(`⏭️  SKIPPED — ${full.skippedReason}`);
+    } else {
+      for (const line of full.perRepo) console.log(`  ${line}`);
+      console.log();
+      for (const m of full.metrics) {
+        console.log(`${m.passed ? "✅ PASS" : "❌ FAIL"}  ${m.metric.padEnd(24)}: ${m.score} ${m.unit ?? ""} (gate: ${m.passed ? ">=" : "<"} ${m.threshold})`);
+        if (m.details) console.log(`   └─ ${m.details}`);
+      }
+    }
+  } else {
+    console.log("\n(full suite skipped — run `pnpm eval:full` with DATABASE_URL and a model key configured to exercise real generation)");
+  }
+
+  const fullPassed = full && !full.skippedReason ? full.metrics.every((m) => m.passed) : true;
+  const overallPassed = smokeOk && fullPassed;
+
+  console.log("\n-------------------------------------------------");
+  console.log(`OVERALL: ${overallPassed ? "PASSED ✅" : "FAILED ❌"}`);
+  console.log("-------------------------------------------------\n");
+
+  writeReport(smoke, full);
+
+  if (!overallPassed) process.exit(1);
+}
+
+function writeReport(
+  smoke: SmokeResult[],
+  full: Awaited<ReturnType<typeof runFullSuite>> | null,
+): void {
+  const lines: string[] = [
+    "# Prepo Eval Suite Report",
+    "",
+    `**Run at:** ${new Date().toISOString()}`,
+    "",
+    "This report reflects what actually ran. The smoke suite runs stages 02–03",
+    "(filter, redact, extract facts) against real local fixtures — no network,",
+    "no API key. It cannot evaluate generated question quality; only",
+    "`pnpm eval:full`, with a real database and model key, exercises the full",
+    "pipeline and scores real output.",
+    "",
+    "## Smoke suite",
+    "",
+    "| Fixture | Result | Files | Languages | Secrets redacted |",
+    "| :--- | :--- | :--- | :--- | :--- |",
+    ...smoke.map(
+      (r) => `| \`${r.id}\` | ${r.ok ? "✅ PASS" : "❌ FAIL"} | ${r.files} | ${r.languages.join(", ") || "—"} | ${r.redactionFindings} |`,
+    ),
+  ];
+
+  if (smoke.some((r) => r.problems.length > 0)) {
+    lines.push("", "**Problems:**", "");
+    for (const r of smoke) for (const p of r.problems) lines.push(`- \`${r.id}\`: ${p}`);
+  }
+
+  lines.push("", "## Full suite", "");
+
+  if (!full) {
+    lines.push("Not run this time — invoke with `pnpm eval:full`.");
+  } else if (full.skippedReason) {
+    lines.push(`Skipped: ${full.skippedReason}`);
+  } else {
+    lines.push(
+      "| Metric | Result | Threshold | Status | Details |",
+      "| :--- | :--- | :--- | :--- | :--- |",
+      ...full.metrics.map(
+        (m) => `| **${m.metric}** | ${m.score} ${m.unit ?? ""} | ${m.threshold} ${m.unit ?? ""} | ${m.passed ? "✅ PASS" : "❌ FAIL"} | ${m.details ?? ""} |`,
+      ),
+      "",
+      "**Per-repository:**",
+      "",
+      ...full.perRepo.map((l) => `- ${l}`),
+    );
+  }
+
+  const reportPath = path.join(process.cwd(), "evals", "report.md");
+  fs.writeFileSync(reportPath, `${lines.join("\n")}\n`, "utf-8");
+  console.log(`Report written to ${reportPath}`);
 }
 
 main().catch((err) => {

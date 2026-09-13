@@ -1,0 +1,18 @@
+{
+  "name": "@prepo/evals",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prepo/db": "workspace:*",
+    "@prepo/engine": "workspace:*",
+    "@prepo/llm": "workspace:*",
+    "@prepo/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

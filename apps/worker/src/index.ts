@@ -1,5 +1,5 @@
 import { eq, getDb, jobs, notifyJob, questionSets, resumes, targetRoles, usageEvents } from "@prepo/db";
-import { CostMeter, createEmbedder, createLlmClient } from "@prepo/llm";
+import { CostMeter, createEmbedder, createLazyLlmClient } from "@prepo/llm";
 import {
   overallProgress,
   resolveCredentials,
@@ -41,8 +41,12 @@ async function handle(payload: AnalyzeJob): Promise<void> {
     });
   });
 
-  const credentials = await resolveCredentials(db, payload.userId);
-  const llm = createLlmClient(credentials, meter, createEmbedder());
+  // Credential resolution is deferred to the first stage that actually needs
+  // an LLM. Stages 01–03 (acquire, filter, extract facts) are deterministic
+  // and free by design — they must not fail just because no provider is
+  // configured yet, and they persist the Repo Card's facts to the snapshot
+  // before stage 04 would ever touch this client. See lazy-provider.ts.
+  const llm = createLazyLlmClient(() => resolveCredentials(db, payload.userId), meter, createEmbedder());
 
   const ctx: PipelineContext = {
     db,

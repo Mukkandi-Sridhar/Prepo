@@ -1,6 +1,7 @@
 import { PrepoError } from "@prepo/shared";
 import { CostMeter } from "./cost.js";
 import { createEmbedder, type Embedder } from "./embeddings.js";
+import { createLazyProvider } from "./lazy-provider.js";
 import { createProvider, specFor } from "./router.js";
 import type { CallOptions, ObjectOptions, Provider, ProviderCredentials, Usage } from "./types.js";
 
@@ -8,6 +9,7 @@ export * from "./types.js";
 export * from "./router.js";
 export * from "./cost.js";
 export * from "./embeddings.js";
+export * from "./lazy-provider.js";
 export { extractJson } from "./providers/openai-compatible.js";
 
 /**
@@ -85,6 +87,30 @@ export function createLlmClient(
   embedder: Embedder = createEmbedder(),
 ): LlmClient {
   return new LlmClient(createProvider(credentials), meter, embedder);
+}
+
+/**
+ * Same shape as `createLlmClient`, but credential resolution is deferred to
+ * the first real call. Use this for batch/background work — like the
+ * analysis pipeline — where the caller wants stages that don't need an LLM
+ * to run to completion even when no provider is configured yet, and wants
+ * the "no key" error to surface naturally, as a normal rejection, at the
+ * point something actually needs one — see `lazy-provider.ts`.
+ *
+ * Not what you want for an interactive request (a chat turn, a "verify this
+ * key" click) — there, resolving eagerly and failing immediately is the
+ * correct UX, so use `createLlmClient` instead.
+ */
+export function createLazyLlmClient(
+  resolveCredentials: () => Promise<ProviderCredentials>,
+  meter: CostMeter,
+  embedder: Embedder = createEmbedder(),
+): LlmClient {
+  return new LlmClient(
+    createLazyProvider(() => resolveCredentials().then(createProvider)),
+    meter,
+    embedder,
+  );
 }
 
 export { CostMeter };

@@ -1,83 +1,104 @@
-export interface GoldenRepoFixture {
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Two kinds of fixture, and they are not interchangeable.
+ *
+ * `LocalFixture` lives inside this repo, needs no network, and costs no
+ * tokens — `collect()` and `extractFacts()` (stages 02–03) can run against it
+ * on every PR, in CI, with nothing configured. This is what `pnpm eval` runs
+ * by default.
+ *
+ * `RemoteFixture` is a real public repository, used to stress the full
+ * pipeline — chunking, embeddings, the dossier, question generation,
+ * verification — against code this project didn't write. That costs real
+ * tokens and needs a real API key, so it only runs under `pnpm eval:full`,
+ * never by default and never in ordinary CI.
+ *
+ * Earlier versions of this file listed nine "golden repos" including two
+ * (`prepo-demo/task-manager-crud`, `prepo-demo/legacy-php-monolith`) under a
+ * GitHub org that does not exist, each pinned to a commit SHA that was never
+ * a real hash — sequential hex, not output from git. Those two are now the
+ * local fixtures below instead: same archetypes, actually real, checked into
+ * this repo, no network dependency. The fabricated SHAs on the remaining
+ * seven are gone too — a `RemoteFixture` resolves whatever HEAD is at run
+ * time, which `runPipeline` records as the real commit it analysed.
+ */
+
+export interface LocalFixture {
+  id: string;
+  dir: string;
+  archetype: string;
+  description: string;
+  /** What the smoke suite should find here — used to fail loudly, not silently pass. */
+  expect: {
+    minFiles: number;
+    languages: string[];
+    /** True if this fixture plants a fake-but-realistic secret to exercise stage 02. */
+    expectRedaction: boolean;
+  };
+}
+
+export const LOCAL_FIXTURES: LocalFixture[] = [
+  {
+    id: "bootcamp-crud",
+    dir: join(here, "fixtures", "local", "bootcamp-crud"),
+    archetype: "Bootcamp CRUD",
+    description: "Small Express + Postgres task manager, the kind of first backend project most bootcamps produce.",
+    expect: { minFiles: 4, languages: ["JavaScript"], expectRedaction: true },
+  },
+  {
+    id: "messy-legacy",
+    dir: join(here, "fixtures", "local", "messy-legacy"),
+    archetype: "Messy legacy monolith",
+    description: "PHP shop app with a Python script shelled out from it, string-concatenated SQL, and no separation of concerns.",
+    expect: { minFiles: 3, languages: ["PHP", "Python"], expectRedaction: true },
+  },
+];
+
+export interface RemoteFixture {
   id: string;
   name: string;
   url: string;
-  commitSha: string;
-  description: string;
   stackType: string;
+  description: string;
 }
 
-export const GOLDEN_REPOS: GoldenRepoFixture[] = [
+/**
+ * Real repositories, used only by `pnpm eval:full`. No pinned commit SHA —
+ * pinning to a value that isn't actually derived from git is worse than not
+ * pinning at all, and the point of this suite is to run against whatever is
+ * at HEAD right now.
+ */
+export const REMOTE_FIXTURES: RemoteFixture[] = [
   {
     id: "react-spa",
     name: "excalidraw/excalidraw",
     url: "https://github.com/excalidraw/excalidraw",
-    commitSha: "8a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b",
-    description: "React SPA with canvas rendering and collaborative editing state",
     stackType: "React SPA",
-  },
-  {
-    id: "django-api",
-    name: "django/django",
-    url: "https://github.com/django/django",
-    commitSha: "9b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c",
-    description: "Python ORM and Web framework API surface",
-    stackType: "Django API",
+    description: "React SPA with canvas rendering and collaborative editing state",
   },
   {
     id: "go-microservice",
     name: "gin-gonic/gin",
     url: "https://github.com/gin-gonic/gin",
-    commitSha: "1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
-    description: "High performance Go HTTP web framework",
     stackType: "Go microservice",
+    description: "High performance Go HTTP web framework",
   },
   {
     id: "rust-cli",
     name: "sharkdp/bat",
     url: "https://github.com/sharkdp/bat",
-    commitSha: "2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e",
-    description: "Rust CLI cat clone with syntax highlighting and git integration",
     stackType: "Rust CLI",
+    description: "Rust CLI cat clone with syntax highlighting and git integration",
   },
   {
     id: "java-spring",
     name: "spring-projects/spring-petclinic",
     url: "https://github.com/spring-projects/spring-petclinic",
-    commitSha: "3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f",
-    description: "Java Spring Boot sample CRUD application with JPA & REST APIs",
     stackType: "Java Spring",
-  },
-  {
-    id: "ml-notebook",
-    name: "huggingface/transformers",
-    url: "https://github.com/huggingface/transformers",
-    commitSha: "4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a",
-    description: "Machine Learning models and PyTorch/TensorFlow pipelines",
-    stackType: "ML Notebook Repo",
-  },
-  {
-    id: "typescript-monorepo",
-    name: "vercel/turbo",
-    url: "https://github.com/vercel/turbo",
-    commitSha: "5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
-    description: "High-performance build system monorepo (Rust core + Node bindings)",
-    stackType: "Monorepo",
-  },
-  {
-    id: "bootcamp-crud",
-    name: "prepo-demo/task-manager-crud",
-    url: "https://github.com/prepo-demo/task-manager-crud",
-    commitSha: "6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c",
-    description: "Bootcamp-style Node Express + Postgres task manager CRUD API",
-    stackType: "Bootcamp CRUD",
-  },
-  {
-    id: "messy-legacy",
-    name: "prepo-demo/legacy-php-monolith",
-    url: "https://github.com/prepo-demo/legacy-php-monolith",
-    commitSha: "7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
-    description: "Legacy unstructured codebase with mixed concerns and minimal docs",
-    stackType: "Messy Monolith",
+    description: "Java Spring Boot sample CRUD application with JPA & REST APIs",
   },
 ];

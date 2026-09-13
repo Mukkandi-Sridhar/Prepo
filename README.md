@@ -145,20 +145,21 @@ prepo/
 │  ├─ prompts/      versioned prompt files + registry
 │  ├─ db/           Drizzle schema + hand-written migrations
 │  └─ shared/       zod contracts, crypto, redaction
-└─ evals/           golden repos, scorers, report
+└─ evals/           local + remote fixtures, scorers, report
 ```
 
 `packages/engine` deliberately imports no framework. It is testable without booting Next.js, and it makes `npx prepo ./my-project` an afternoon rather than a refactor.
 
 ### Evals
 
-Prompt changes feel like improvements and are frequently regressions.
+Prompt changes feel like improvements and are frequently regressions. Two tiers:
 
 ```bash
-pnpm eval
+pnpm eval        # default — stages 02–03 against real local fixtures, no network, no API key
+pnpm eval:full   # opt-in — the real pipeline against real repos, needs DATABASE_URL + a model key
 ```
 
-Runs the golden set and writes a report. CI runs a subset on any PR touching `packages/prompts` or `packages/engine` and gates on citation validity (must be 100%), groundedness, category coverage, duplicate rate, and cost.
+`pnpm eval` is what CI runs on every PR: it exercises filtering, secret redaction, and fact extraction against the fixtures in [`evals/fixtures/local`](evals/fixtures/local) and fails loudly if a planted secret goes unredacted or an expected language goes undetected. It cannot tell you whether generated *questions* are any good — only `pnpm eval:full` can, because that's the only mode that actually calls a model. Run it before merging a change to `packages/prompts` or `packages/engine`'s stage 04–07 logic, and attach `evals/report.md` to the PR.
 
 ---
 

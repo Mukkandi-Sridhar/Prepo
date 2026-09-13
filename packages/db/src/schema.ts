@@ -447,7 +447,7 @@ export const auditLog = pgTable("audit_log", {
   target: text("target"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   ip: text("ip"),
-  at: createdAt(),
+  at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /* ── relations ──────────────────────────────────────────────── */
