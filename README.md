@@ -74,16 +74,48 @@ Before anything reaches a model, stage 02 scans for secrets and replaces them �
 
 Three containers, one database.
 
-```
-Browser ──► app (Next.js 15)          worker (pg-boss consumer)
-                │                          │
-                └────► Postgres 16 ◄───────┘
-                       pgvector · pg-boss · LISTEN/NOTIFY
-                            │
-              GitHub · LLM providers · object storage
+```mermaid
+flowchart LR
+    Browser(["Browser"])
+
+    subgraph App["app · Next.js 15"]
+        UI["UI + server actions"]
+        SSE["SSE progress stream"]
+    end
+
+    subgraph Worker["worker · pg-boss consumer"]
+        Pipeline["7-stage pipeline<br/>acquire → verify"]
+    end
+
+    subgraph DB["Postgres 16"]
+        direction TB
+        Rel["relational data"]
+        Vec["pgvector — chunk search"]
+        Queue["pg-boss — job queue"]
+        Notify["LISTEN/NOTIFY — live progress"]
+    end
+
+    GitHub(["GitHub / GitLab / .zip"])
+    LLM(["Your LLM provider<br/>Anthropic · OpenAI · Gemini · Ollama"])
+    Storage(["Object storage<br/>local volume or S3"])
+
+    Browser <--> UI
+    Browser <-.->|"progress events"| SSE
+    UI -->|"enqueue job"| Queue
+    Queue -->|"dequeue"| Pipeline
+    Pipeline --> Rel
+    Pipeline --> Vec
+    Pipeline -->|"publish progress"| Notify
+    Notify -.-> SSE
+    Pipeline --> GitHub
+    Pipeline --> LLM
+    Pipeline --> Storage
+
+    classDef ext fill:none,stroke:#1f6f5c,stroke-width:1.5px;
+    class Browser,GitHub,LLM,Storage ext;
 ```
 
-The single most useful decision here is that Postgres does four jobs — relational data, vector search, the job queue, and live progress. Every service you add is one a contributor has to install and you have to debug at 2am.
+The single most useful decision here is that Postgres does four jobs — relational data, vector search, the job queue, and live progress. Every service you add is one a contributor has to install and you have to debug at 2am. Progress rides on `LISTEN/NOTIFY` rather than an in-memory event emitter, which is what lets the web tier scale to more than one replica — a worker on any host can wake an SSE connection on any web replica because they share nothing but the database.
 
 ### The seven-stage pipeline
 
